@@ -1,0 +1,6 @@
+[submodule "freo-wallet"]
+	path = freo-wallet
+	url = https://github.com/Osamakahen/freo-wallet.git
+[submodule "freobus-deploy"]
+	path = freobus-deploy
+	url = https://github.com/Osamakahen/freobus-deploy.git
