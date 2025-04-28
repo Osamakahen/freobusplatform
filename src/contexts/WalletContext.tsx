@@ -2,24 +2,37 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { WalletState, WalletProvider, WalletEvent } from '../types/wallet';
 import { walletLogger } from '../services/walletLogger';
 
+interface EthereumProvider extends WalletProvider {
+  request: (args: { method: string; params?: any[] }) => Promise<any>;
+  on: (eventName: string, handler: (...args: any[]) => void) => void;
+  removeAllListeners: (eventName: string) => void;
+}
+
+declare global {
+  interface Window {
+    ethereum?: EthereumProvider;
+  }
+}
+
 interface WalletContextType {
   state: WalletState;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  signMessage: (message: string) => Promise<string>;
   sendTransaction: (transaction: any) => Promise<any>;
   getBalance: (address: string) => Promise<string>;
 }
 
-const WalletContext = createContext<WalletContextType | undefined>(undefined);
+const WalletContext = createContext<WalletContextType | null>(null);
 
-export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, setState] = useState<WalletState>({
+export const WalletContextProvider = ({ children }: { children: any }) => {
+  const [state, setState] = useState({
     isConnected: false,
     address: null,
     chainId: null,
     balance: null,
     error: null
-  });
+  } as WalletState);
 
   const handleWalletEvent = (event: WalletEvent, data?: any) => {
     switch (event) {
@@ -141,6 +154,28 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  const signMessage = async (message: string) => {
+    try {
+      const provider = window.ethereum;
+      if (!provider) {
+        throw new Error('No wallet provider found');
+      }
+
+      const signature = await provider.request({
+        method: 'personal_sign',
+        params: [message, state.address]
+      });
+
+      return signature;
+    } catch (error) {
+      handleWalletEvent('error', {
+        code: 500,
+        message: error instanceof Error ? error.message : 'Failed to sign message'
+      });
+      throw error;
+    }
+  };
+
   useEffect(() => {
     const provider = window.ethereum;
     if (provider) {
@@ -153,21 +188,21 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       });
 
       return () => {
-        provider.removeAllListeners();
+        provider.removeAllListeners('accountsChanged');
+        provider.removeAllListeners('chainChanged');
       };
     }
   }, []);
 
   return (
-    <WalletContext.Provider
-      value={{
-        state,
-        connect,
-        disconnect,
-        sendTransaction,
-        getBalance
-      }}
-    >
+    <WalletContext.Provider value={{
+      state,
+      connect,
+      disconnect,
+      sendTransaction,
+      getBalance,
+      signMessage
+    }}>
       {children}
     </WalletContext.Provider>
   );
@@ -175,8 +210,8 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
 export const useWallet = () => {
   const context = useContext(WalletContext);
-  if (context === undefined) {
-    throw new Error('useWallet must be used within a WalletProvider');
+  if (!context) {
+    throw new Error('useWallet must be used within a WalletContextProvider');
   }
   return context;
 }; 
